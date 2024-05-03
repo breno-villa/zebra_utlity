@@ -5,7 +5,5 @@
 .pub/
 
 build/
-example/android
+example/build/
 example/ios
-example/lib
-example/test

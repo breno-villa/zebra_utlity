@@ -323,6 +323,43 @@ public class Printer implements MethodChannel.MethodCallHandler {
         }
     }
 
+    public void printPdf(String pdfPath) {
+        new Thread(new Runnable() {
+            public void run() {
+//                enableTestButton(false);
+                Looper.prepare();
+                if (isZebraPrinter) {
+                    if (printer != null) {
+                        sendPdf(pdfPath);
+                    } else {
+                        disconnect();
+                    }
+                }
+                Looper.loop();
+                Looper.myLooper().quit();
+            }
+        }).start();
+    }
+
+    private void sendPdf(String pdfPath) {
+        try {
+            // byte[] bytes = convertDataToByte(data);
+            setStatus(context.getString(R.string.sending_data), context.getString(R.string.connectingColor));
+            // ZebraPrinterLinkOs printerLinkOs = ZebraPrinterFactory.getLinkOsPrinter(printerConnection);
+            printer.sendFileContents(pdfPath);
+            // printerConnection.write(pdf);
+            DemoSleeper.sleep(1500);
+
+            if (printerConnection instanceof BluetoothConnection) {
+                DemoSleeper.sleep(500);
+            }
+            setStatus(context.getResources().getString(R.string.done), context.getString(R.string.connectedColor));
+        } catch (ConnectionException e) {
+            disconnect();
+        } finally {
+        }
+    }
+
 
     public boolean connectToSelectPrinter(String address) {
         isZebraPrinter = true;
@@ -604,10 +641,12 @@ public class Printer implements MethodChannel.MethodCallHandler {
     public void onMethodCall(@NonNull final MethodCall call, @NonNull final MethodChannel.Result result) {
         if (call.method.equals("print")) {
             print(call.argument("Data").toString());
+        } else if (call.method.equals("printPdf")){
+            printPdf(call.argument("pdfPath"));
         } else if (call.method.equals("checkPermission")) {
             checkPermission(context, result);
         } else if (call.method.equals("convertBase64ImageToZPLString")) {
-            convertBase64ImageToZPLString(call.argument("Data").toString())
+            convertBase64ImageToZPLString(call.argument("Data").toString()
                     , Integer.valueOf(call.argument("rotation").toString()), result);
         } else if (call.method.equals("disconnect")) {
             new Thread(new Runnable() {

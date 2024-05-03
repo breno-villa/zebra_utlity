@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 enum EnumMediaType { Label, BlackMark, Journal }
+
 enum Command { calibrate, mediaType, darkness }
 
 class ZebraPrinter {
@@ -110,6 +111,10 @@ class ZebraPrinter {
     this.isRotated = !this.isRotated;
   }
 
+  printPdf(String path) {
+    channel.invokeMethod("printPdf", {"pdfPath": path});
+  }
+
   Future<dynamic> nativeMethodCallHandler(MethodCall methodCall) async {
     if (methodCall.method == "printerFound") {
       onPrinterFound!(
@@ -122,8 +127,8 @@ class ZebraPrinter {
     } else if (methodCall.method == "onPrinterDiscoveryDone") {
       onPrinterDiscoveryDone!();
     } else if (methodCall.method == "onDiscoveryError") {
-      onDiscoveryError!(methodCall.arguments["ErrorCode"]
-          , methodCall.arguments["ErrorText"]);
+      onDiscoveryError!(
+          methodCall.arguments["ErrorCode"], methodCall.arguments["ErrorText"]);
     }
     return null;
   }
