@@ -12,9 +12,12 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.pdf.PdfRenderer;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.util.Base64;
 
 import androidx.annotation.NonNull;
@@ -31,7 +34,10 @@ import com.zebra.sdk.printer.discovery.DiscoveryHandler;
 import com.zebra.sdk.printer.discovery.NetworkDiscoverer;
 
 import java.util.ArrayList;
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
 
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
@@ -323,14 +329,14 @@ public class Printer implements MethodChannel.MethodCallHandler {
         }
     }
 
-    public void printPdf(String pdfPath) {
+    public void printPdf(String pdfPath, Map<String, Object> config) {
         new Thread(new Runnable() {
             public void run() {
 //                enableTestButton(false);
                 Looper.prepare();
                 if (isZebraPrinter) {
                     if (printer != null) {
-                        sendPdf(pdfPath);
+                        sendPdf(pdfPath, config);
                     } else {
                         disconnect();
                     }
@@ -341,23 +347,119 @@ public class Printer implements MethodChannel.MethodCallHandler {
         }).start();
     }
 
-    private void sendPdf(String pdfPath) {
+    private void sendPdf(String pdfPath, Map<String, Object> config) {
         try {
             // byte[] bytes = convertDataToByte(data);
             setStatus(context.getString(R.string.sending_data), context.getString(R.string.connectingColor));
-            // ZebraPrinterLinkOs printerLinkOs = ZebraPrinterFactory.getLinkOsPrinter(printerConnection);
-            printer.sendFileContents(pdfPath);
-            // printerConnection.write(pdf);
+            printPdfAsZpl(pdfPath, config);
             DemoSleeper.sleep(1500);
 
             if (printerConnection instanceof BluetoothConnection) {
                 DemoSleeper.sleep(500);
             }
             setStatus(context.getResources().getString(R.string.done), context.getString(R.string.connectedColor));
-        } catch (ConnectionException e) {
+        } catch (Exception e) {
+            e.printStackTrace();
             disconnect();
         } finally {
         }
+    }
+
+    private void printPdfAsZpl(String pdfPath, Map<String, Object> config) throws IOException, ConnectionException {
+        if (printerConnection == null || !printerConnection.isConnected()) {
+            return;
+        }
+
+        int dpi = getIntConfig(config, "dpi", 203);
+        int darkness = getIntConfig(config, "darkness", 25);
+        double widthMm = getDoubleConfig(config, "widthMm", 104);
+        double heightMm = getDoubleConfig(config, "heightMm", 218);
+
+        int printWidthDots = mmToDots(widthMm, dpi);
+        int labelLengthDots = mmToDots(heightMm, dpi);
+
+        String settings =
+                "! U1 setvar \"print.tone\" \"" + darkness + "\"\n" +
+                "! U1 setvar \"ezpl.print_width\" \"" + printWidthDots + "\"\n" +
+                "^XA^POI^PW" + printWidthDots + "^LL" + labelLengthDots + "^JUS^XZ\n";
+
+        printerConnection.write(settings.getBytes());
+        DemoSleeper.sleep(500);
+
+        ParcelFileDescriptor fileDescriptor = ParcelFileDescriptor.open(new File(pdfPath), ParcelFileDescriptor.MODE_READ_ONLY);
+        PdfRenderer renderer = new PdfRenderer(fileDescriptor);
+        try {
+            for (int pageIndex = 0; pageIndex < renderer.getPageCount(); pageIndex++) {
+                PdfRenderer.Page page = renderer.openPage(pageIndex);
+                try {
+                    Bitmap bitmap = Bitmap.createBitmap(printWidthDots, labelLengthDots, Bitmap.Config.ARGB_8888);
+                    bitmap.eraseColor(Color.WHITE);
+                    Rect destination = new Rect(0, 0, printWidthDots, labelLengthDots);
+                    page.render(bitmap, destination, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT);
+
+                    String zpl = getZplCode(bitmap, true, 0);
+                    printerConnection.write(zpl.getBytes());
+                    DemoSleeper.sleep(500);
+                } finally {
+                    page.close();
+                }
+            }
+        } finally {
+            renderer.close();
+            fileDescriptor.close();
+        }
+    }
+
+    private int mmToDots(double millimeters, int dpi) {
+        if (dpi == 203) {
+            return Math.max(1, (int) Math.round(millimeters * 8));
+        }
+        return Math.max(1, (int) Math.round((millimeters / 25.4) * dpi));
+    }
+
+    private int getIntConfig(Map<String, Object> config, String key, int defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Integer.parseInt((String) value);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return defaultValue;
+    }
+
+    private double getDoubleConfig(Map<String, Object> config, String key, double defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return defaultValue;
+    }
+
+    private String getStringConfig(Map<String, Object> config, String key, String defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(key);
+        if (value instanceof String) {
+            return (String) value;
+        }
+        return defaultValue;
     }
 
 
@@ -642,7 +744,7 @@ public class Printer implements MethodChannel.MethodCallHandler {
         if (call.method.equals("print")) {
             print(call.argument("Data").toString());
         } else if (call.method.equals("printPdf")){
-            printPdf(call.argument("pdfPath"));
+            printPdf(call.argument("pdfPath"), call.argument("config"));
         } else if (call.method.equals("checkPermission")) {
             checkPermission(context, result);
         } else if (call.method.equals("convertBase64ImageToZPLString")) {
