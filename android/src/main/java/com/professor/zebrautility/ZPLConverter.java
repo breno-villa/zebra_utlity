@@ -64,7 +64,7 @@ public class ZPLConverter {
         String zplCode = "^GFA," + total + "," + total + "," + widthBytes + ", " + hexAscii;
 
         if (addHeaderFooter) {
-            String header = "^XA " + "^FO0,0^GFA," + total + "," + total + "," + widthBytes + ", ";
+            String header = "^XA^POI^FO0,0^GFA," + total + "," + total + "," + widthBytes + ", ";
             String footer = "^FS" + "^XZ";
             zplCode = header + zplCode + footer;
         }

@@ -4,6 +4,35 @@ enum EnumMediaType { Label, BlackMark, Journal }
 
 enum Command { calibrate, mediaType, darkness }
 
+class ZebraPrintConfig {
+  final int darkness;
+  final int dpi;
+  final double widthMm;
+  final double heightMm;
+  final int rotationDegrees;
+  final EnumMediaType mediaType;
+
+  const ZebraPrintConfig({
+    this.darkness = 25,
+    this.dpi = 203,
+    required this.widthMm,
+    required this.heightMm,
+    this.rotationDegrees = 0,
+    this.mediaType = EnumMediaType.Journal,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      "darkness": darkness,
+      "dpi": dpi,
+      "widthMm": widthMm,
+      "heightMm": heightMm,
+      "rotationDegrees": rotationDegrees,
+      "mediaType": mediaType.name,
+    };
+  }
+}
+
 class ZebraPrinter {
   late MethodChannel channel;
 
@@ -15,9 +44,14 @@ class ZebraPrinter {
 
   bool isRotated = false;
 
-  ZebraPrinter(String id, this.onPrinterFound, this.onPrinterDiscoveryDone,
-      this.onDiscoveryError, this.onChangePrinterStatus,
-      {this.onPermissionDenied}) {
+  ZebraPrinter(
+    String id,
+    this.onPrinterFound,
+    this.onPrinterDiscoveryDone,
+    this.onDiscoveryError,
+    this.onChangePrinterStatus, {
+    this.onPermissionDenied,
+  }) {
     channel = MethodChannel('ZebraPrinterObject' + id);
     channel.setMethodCallHandler(nativeMethodCallHandler);
   }
@@ -67,7 +101,7 @@ class ZebraPrinter {
 
     try {
       channel.invokeMethod("setSettings", {"SettingCommand": command});
-    } on PlatformException catch (e) {}
+    } on PlatformException {}
   }
 
   setDarkness(int darkness) {
@@ -111,24 +145,32 @@ class ZebraPrinter {
     this.isRotated = !this.isRotated;
   }
 
-  printPdf(String path) {
-    channel.invokeMethod("printPdf", {"pdfPath": path});
+  printPdf(String path, {ZebraPrintConfig? config}) {
+    channel.invokeMethod("printPdf", {
+      "pdfPath": path,
+      if (config != null) "config": config.toMap(),
+    });
   }
 
   Future<dynamic> nativeMethodCallHandler(MethodCall methodCall) async {
     if (methodCall.method == "printerFound") {
       onPrinterFound!(
-          methodCall.arguments["Name"],
-          methodCall.arguments["Address"],
-          methodCall.arguments["IsWifi"].toString() == "true" ? true : false);
+        methodCall.arguments["Name"],
+        methodCall.arguments["Address"],
+        methodCall.arguments["IsWifi"].toString() == "true" ? true : false,
+      );
     } else if (methodCall.method == "changePrinterStatus") {
       onChangePrinterStatus!(
-          methodCall.arguments["Status"], methodCall.arguments["Color"]);
+        methodCall.arguments["Status"],
+        methodCall.arguments["Color"],
+      );
     } else if (methodCall.method == "onPrinterDiscoveryDone") {
       onPrinterDiscoveryDone!();
     } else if (methodCall.method == "onDiscoveryError") {
       onDiscoveryError!(
-          methodCall.arguments["ErrorCode"], methodCall.arguments["ErrorText"]);
+        methodCall.arguments["ErrorCode"],
+        methodCall.arguments["ErrorText"],
+      );
     }
     return null;
   }
