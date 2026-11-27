@@ -761,7 +761,7 @@ public class Printer implements MethodChannel.MethodCallHandler {
         } else if (call.method.equals("isPrinterConnected")) {
             isPrinterConnect();
         } else if (call.method.equals("discoverPrinters")) {
-            if (checkIsLocationNetworkProviderIsOn()) {
+            if (isLocationEnabled()) {
                 discoveryPrinters(context, methodChannel);
             } else {
                 onDiscoveryError(context, methodChannel, ON_DISCOVERY_ERROR_LOCATION, "Your location service is off.");
@@ -799,10 +799,18 @@ public class Printer implements MethodChannel.MethodCallHandler {
         }
     }
 
-    private boolean checkIsLocationNetworkProviderIsOn() {
+    // Bluetooth discovery only needs location services to be on (any mode).
+    // Requiring NETWORK_PROVIDER made discovery fail silently on devices with
+    // "Google Location Accuracy" turned off, even with GPS on.
+    private boolean isLocationEnabled() {
         LocationManager lm = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) return false;
         try {
-            return lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return lm.isLocationEnabled();
+            }
+            return lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
         } catch (Exception ex) {
             return false;
         }
